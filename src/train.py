@@ -32,7 +32,7 @@ from PIL import ImageFile
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 
-run_name = "resnet18_not_pretrained_4_classes"
+run_name = "resnet18_not_pretrained_6_classes_predict_first"
 
 # Switching on GPU
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -67,10 +67,10 @@ y_test = testset.targets
 
 
 class_label_mapper = {
-    0: [0, 2],
-    1: [1, 3],
-    2: [0, 2],
-    3: [1, 3]
+    0: [0, 4],
+    1: [1, 5],
+    2: [2, 4],
+    3: [3, 5]
 }
 
 # Define a function to separate CIFAR classes by class index
@@ -98,7 +98,8 @@ def get_class_i(x, y, i):
 class DatasetMaker(Dataset):
     def __init__(self, datasets, transformFunc=transform_no_aug):
         """
-        datasets: a list of get_class_i outputs, i.e. a list of list of images for selected classes
+        datasets: a list of get_class_i outputs, i.e. a list of 
+        list of images for selected classes
         """
         self.datasets = datasets
         self.lengths = [len(d) for d in self.datasets]
@@ -111,14 +112,15 @@ class DatasetMaker(Dataset):
 
         labels = [class_label_mapper[class_label]]
 
-        return img, trainset.classes[class_label], self.to_onehot(labels, 4)
+        return img, trainset.classes[class_label], self.to_onehot(labels, 6)
 
     def __len__(self):
         return sum(self.lengths)
 
     def index_of_which_bin(self, bin_sizes, absolute_index, verbose=False):
         """
-        Given the absolute index, returns which bin it falls in and which element of that bin it corresponds to.
+        Given the absolute index, returns which bin it falls 
+        in and which element of that bin it corresponds to.
         """
         # Which class/bin does i fall into?
         accum = np.add.accumulate(bin_sizes)
@@ -139,7 +141,6 @@ class DatasetMaker(Dataset):
         for label in labels:
             one_hot_labels[label] = 1.
         return one_hot_labels
-
 
 
 avian_land_dataset = DatasetMaker(
@@ -186,35 +187,38 @@ def train_multiclass_model(model, train_loader, val_loader, loss, optimizer, num
 
         for i_step, (x, y_class, one_hot_vectors) in enumerate(train_loader):
             #             y_oh=y_oh.type(torch.FloatTensor)
-            # Divide classes into pasta/hotdog (without ticker of country) and burger/pizza (with ticker of country)
-            
+            # Divide classes into pasta/hotdog (without ticker of country)
+            # and burger/pizza (with ticker of country)
+
             indexes_one = [i for i, x in enumerate(y_class) if (
                 x == 'airplane') | (x == 'automobile')]
             indexes_two = [i for i, x in enumerate(
                 y_class) if (x == 'bird') | (x == 'cat')]
 
-            # Calculate loss for 1st part (2 one-hot classes, pasta and hotdog) (classes 3,4 are cutted off)
-            x_one, y_oh_one = x[indexes_one], one_hot_vectors[indexes_one][:, :2]
+            # Calculate loss for 1st part (2 one-hot classes, pasta and hotdog)
+            # (classes 3,4 are cutted off)
+            x_one, y_oh_one = x[indexes_one], one_hot_vectors[indexes_one]
             x_one, y_oh_one = x_one.to(device), y_oh_one.to(device)
             prediction_one = model(x_one)
 
-            loss_value_one = loss(prediction_one[:, :2], y_oh_one)
+            loss_value_one = loss(prediction_one, y_oh_one)
 
             # Calculate loss for 2nd part (4 one-hot classes, pizza and burger)
             x_two, y_oh_two = x[indexes_two], one_hot_vectors[indexes_two]
             x_two, y_oh_two = x_two.to(device), y_oh_two.to(device)
 
-            y_oh_two = y_oh_two[:, :4]
+            y_oh_two = y_oh_two
             prediction_two = model(x_two)
             loss_value_two = loss(prediction_two, y_oh_two)
 
             # Sum up losses
             loss_value = loss_value_one+loss_value_two
 
-            # Calculate accuracy of classes 3/4 for pasta/hotdog, which is not learned strictly by net,
+            # Calculate accuracy of classes 3/4 for pasta/hotdog, which is not
+            # learned strictly by net,
             # but by association through pizza & burger
             # took only predictions of pasta/hotdog for classes 3/4
-            prediction = prediction_one[:, 2:]
+            prediction = prediction_one
             _, indices_pred = torch.max(prediction, 1)
             # one-hot encoding for 3/4 looks same as for 1/2
             _, indices_true = torch.max(y_oh_one, 1)
@@ -222,10 +226,10 @@ def train_multiclass_model(model, train_loader, val_loader, loss, optimizer, num
             total_samples += indices_pred.shape[0]
 
             # Calculate accuracy of calsses 1/2 for all images in a batch
-            x_total, y_total = x, one_hot_vectors[:, :2]
+            x_total, y_total = x, one_hot_vectors[:, :4]
             x_total, y_total = x_total.to(device), y_total.to(device)
 
-            prediction_total = model(x_total)[:, :2]
+            prediction_total = model(x_total)
             _, indices_total_pred = torch.max(prediction_total, 1)
             _, indices_total_true = torch.max(y_total, 1)
             correct_samples_total += torch.sum(
@@ -239,7 +243,6 @@ def train_multiclass_model(model, train_loader, val_loader, loss, optimizer, num
             loss_accum += loss_value
 
             # writer.add_graph(model, x_two)
-
 
         ave_loss = loss_accum/i_step
 
@@ -256,7 +259,7 @@ def train_multiclass_model(model, train_loader, val_loader, loss, optimizer, num
         writer.add_scalar('Loss/test', val_loss, epoch)
         writer.add_scalar('Accuracy/train', train_accuracy, epoch)
         writer.add_scalar('Accuracy/test', val_accuracy, epoch)
-        
+
         print('Loss_train: {}, Loss_val:{}'.format(ave_loss, val_loss))
         print('Acc_train: {}, Acc_val: {}'.format(train_accuracy, val_accuracy))
         print('Acc_classifier: {}'.format(class_accuracy_train))
@@ -277,9 +280,9 @@ def calculate_accuracy(model, loader):
                 y_class) if (x == 'airplane') | (x == 'car')]
             y_oh = y_oh.type(torch.FloatTensor)
             y_class = list(y_class)
-            x, y = x.to(device)[indexes_one], y_oh.to(
-                device)[indexes_one][:, :2]
-            prediction = model(x)[:, 2:]
+            x = x.to(device)[indexes_one]
+            y = y_oh.to(device)[indexes_one][:, 2:4]
+            prediction = model(x)[:, 2:4]
             loss_accum += loss(prediction, y)
             _, indices_pred = torch.max(prediction, 1)
             _, indices_true = torch.max(y, 1)
@@ -295,15 +298,20 @@ def calculate_accuracy(model, loader):
 
 multiclass_net = models.resnet18(pretrained=False)
 num_ftrs = multiclass_net.fc.in_features
-multiclass_net.fc = (nn.Linear(num_ftrs, 4))
+multiclass_net.fc = (nn.Linear(num_ftrs, 6))
 
 # multiclass_net.load_state_dict(torch.load('classifier.pt'))
 multiclass_net = multiclass_net.to(device)
 loss = nn.BCEWithLogitsLoss()
 optimizer = optim.Adam(multiclass_net.parameters(), lr=1e-3)  # , momentum=0.9)
 
-loss_history, accuracy_history, val_loss_history, val_accuracy_history = train_multiclass_model(
-    multiclass_net, trainsetLoader, testsetLoader, loss, optimizer, 50)
+loss_history, accuracy_history, val_loss_history, val_accuracy_history = \
+    train_multiclass_model(multiclass_net,
+                           trainsetLoader,
+                           testsetLoader,
+                           loss,
+                           optimizer, 
+                           50)
 #torch.save(multiclass_net.state_dict(), 'multiclass_v2.pt')
 
 plt.figure(figsize=(20, 5))
