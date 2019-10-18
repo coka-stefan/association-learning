@@ -32,7 +32,8 @@ from PIL import ImageFile
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 
-run_name = "resnet18_not_pretrained_6_classes_predict_first"
+# run_name = "resnet18_not_pretrained_6_classes_predict_first_acc_first"
+run_name = "Adam_not_pretrained_resnet50_val_test"
 
 # Switching on GPU
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -147,7 +148,7 @@ avian_land_dataset = DatasetMaker(
     [get_class_i(x_train, y_train, classDict['plane']),
      get_class_i(x_train, y_train, classDict['car']),
      get_class_i(x_train, y_train, classDict['bird']),
-     get_class_i(x_train, y_train, classDict['cat'])],
+     get_class_i(x_train, y_train, classDict['horse'])],
     transform_with_aug
 )
 
@@ -156,15 +157,18 @@ test_avian_land_dataset = DatasetMaker(
     [get_class_i(x_test, y_test, classDict['plane']),
      get_class_i(x_test, y_test, classDict['car']),
      get_class_i(x_test, y_test, classDict['bird']),
-     get_class_i(x_test, y_test, classDict['cat'])],
+     get_class_i(x_test, y_test, classDict['horse'])],
     transform_with_aug
 )
 
 
 testsetLoader = DataLoader(test_avian_land_dataset,
-                           batch_size=512, shuffle=True, num_workers=4, pin_memory=True)
+                           batch_size=20000, 
+                           shuffle=True,
+                           num_workers=4,
+                           pin_memory=True)
 trainsetLoader = DataLoader(
-    avian_land_dataset, batch_size=512, shuffle=True, num_workers=4, pin_memory=True)
+    avian_land_dataset, batch_size=1000, shuffle=True, num_workers=4, pin_memory=True)
 
 
 def train_multiclass_model(model, train_loader, val_loader, loss, optimizer, num_epoch):
@@ -175,9 +179,10 @@ def train_multiclass_model(model, train_loader, val_loader, loss, optimizer, num
     val_loss_history = []
     accuracy_history = []
     val_accuracy_history = []
+    test_accuracy_history = []
 
     for epoch in tqdm(range(num_epoch)):
-        print('Epoch: {}/{}'.format(epoch+1, num_epoch))
+        tqdm.write('Epoch: {}/{}'.format(epoch+1, num_epoch))
         model.train()
         loss_accum = 0
         correct_samples = 0
@@ -190,51 +195,62 @@ def train_multiclass_model(model, train_loader, val_loader, loss, optimizer, num
             # Divide classes into pasta/hotdog (without ticker of country)
             # and burger/pizza (with ticker of country)
 
-            indexes_one = [i for i, x in enumerate(y_class) if (
-                x == 'airplane') | (x == 'automobile')]
-            indexes_two = [i for i, x in enumerate(
-                y_class) if (x == 'bird') | (x == 'cat')]
+            # indexes_one = [i for i, x in enumerate(y_class) if (
+            #     x == 'airplane') | (x == 'automobile')]
+            # indexes_two = [i for i, x in enumerate(
+            #     y_class) if (x == 'bird') | (x == 'cat')]
 
-            # Calculate loss for 1st part (2 one-hot classes, pasta and hotdog)
-            # (classes 3,4 are cutted off)
-            x_one, y_oh_one = x[indexes_one], one_hot_vectors[indexes_one]
-            x_one, y_oh_one = x_one.to(device), y_oh_one.to(device)
-            prediction_one = model(x_one)
+            # # Calculate loss for 1st part (2 one-hot classes, pasta and hotdog)
+            # # (classes 3,4 are cutted off)
+            # x_one, y_oh_one = x[indexes_one], one_hot_vectors[indexes_one]
+            # x_one, y_oh_one = x_one.to(device), y_oh_one.to(device)
+            # prediction_one = model(x_one)
 
-            loss_value_one = loss(prediction_one, y_oh_one)
+            # loss_value_one = loss(prediction_one, y_oh_one)
 
-            # Calculate loss for 2nd part (4 one-hot classes, pizza and burger)
-            x_two, y_oh_two = x[indexes_two], one_hot_vectors[indexes_two]
-            x_two, y_oh_two = x_two.to(device), y_oh_two.to(device)
+            # # Calculate loss for 2nd part (4 one-hot classes, pizza and burger)
+            # x_two, y_oh_two = x[indexes_two], one_hot_vectors[indexes_two]
+            # x_two, y_oh_two = x_two.to(device), y_oh_two.to(device)
 
-            y_oh_two = y_oh_two
-            prediction_two = model(x_two)
-            loss_value_two = loss(prediction_two, y_oh_two)
+            # y_oh_two = y_oh_two
+            # prediction_two = model(x_two)
+            # loss_value_two = loss(prediction_two, y_oh_two)
 
-            # Sum up losses
-            loss_value = loss_value_one+loss_value_two
+            # # Sum up losses
+            # loss_value = loss_value_one+loss_value_two
 
-            # Calculate accuracy of classes 3/4 for pasta/hotdog, which is not
-            # learned strictly by net,
-            # but by association through pizza & burger
-            # took only predictions of pasta/hotdog for classes 3/4
-            prediction = prediction_one
-            _, indices_pred = torch.max(prediction, 1)
-            # one-hot encoding for 3/4 looks same as for 1/2
-            _, indices_true = torch.max(y_oh_one, 1)
+            # # Calculate accuracy of classes 3/4 for pasta/hotdog, which is not
+            # # learned strictly by net,
+            # # but by association through pizza & burger
+            # # took only predictions of pasta/hotdog for classes 3/4
+            # prediction = prediction_one
+            # _, indices_pred = torch.max(prediction, 1)
+            # # one-hot encoding for 3/4 looks same as for 1/2
+            # _, indices_true = torch.max(y_oh_one, 1)
+            # correct_samples += torch.sum(indices_pred == indices_true)
+            # total_samples += indices_pred.shape[0]
+
+            # # Calculate accuracy of calsses 1/2 for all images in a batch
+            # x_total, y_total = x, one_hot_vectors[:, :4]
+            # x_total, y_total = x_total.to(device), y_total.to(device)
+
+            # prediction_total = model(x_total)
+            # _, indices_total_pred = torch.max(prediction_total, 1)
+            # _, indices_total_true = torch.max(y_total, 1)
+            # correct_samples_total += torch.sum(
+            #     indices_total_pred == indices_total_true)
+            
+            x = x.to(device)
+            one_hot_vectors = one_hot_vectors.to(device)
+            prediction = model(x)
+            loss_value = loss(prediction, one_hot_vectors)
+
+            _, indices_pred = torch.max(prediction[:, :4], 1)
+            _, indices_true = torch.max(one_hot_vectors[:, :4], 1)
             correct_samples += torch.sum(indices_pred == indices_true)
             total_samples += indices_pred.shape[0]
 
-            # Calculate accuracy of calsses 1/2 for all images in a batch
-            x_total, y_total = x, one_hot_vectors[:, :4]
-            x_total, y_total = x_total.to(device), y_total.to(device)
-
-            prediction_total = model(x_total)
-            _, indices_total_pred = torch.max(prediction_total, 1)
-            _, indices_total_true = torch.max(y_total, 1)
-            correct_samples_total += torch.sum(
-                indices_total_pred == indices_total_true)
-            total_samples_total += indices_total_pred.shape[0]
+            total_samples_total += indices_pred.shape[0]
 
             # Optimize model
             optimizer.zero_grad()
@@ -247,10 +263,11 @@ def train_multiclass_model(model, train_loader, val_loader, loss, optimizer, num
         ave_loss = loss_accum/i_step
 
         train_accuracy = float(correct_samples)/total_samples
-        class_accuracy_train = float(correct_samples_total)/total_samples_total
-        val_accuracy, val_loss = calculate_accuracy(model, val_loader)
+        # class_accuracy_train = float(correct_samples_total)/total_samples_total
+        test_accuracy, val_accuracy, val_loss = calculate_accuracy(model, val_loader)
 
         val_accuracy_history.append(val_accuracy)
+        test_accuracy_history.append(test_accuracy)
         accuracy_history.append(train_accuracy)
         val_loss_history.append(float(val_loss))
         loss_history.append(float(ave_loss))
@@ -258,54 +275,71 @@ def train_multiclass_model(model, train_loader, val_loader, loss, optimizer, num
         writer.add_scalar('Loss/train', ave_loss, epoch)
         writer.add_scalar('Loss/test', val_loss, epoch)
         writer.add_scalar('Accuracy/train', train_accuracy, epoch)
-        writer.add_scalar('Accuracy/test', val_accuracy, epoch)
+        writer.add_scalar('Accuracy/test', test_accuracy, epoch)
+        writer.add_scalar('Accuracy/val', val_accuracy, epoch)
 
-        print('Loss_train: {}, Loss_val:{}'.format(ave_loss, val_loss))
-        print('Acc_train: {}, Acc_val: {}'.format(train_accuracy, val_accuracy))
-        print('Acc_classifier: {}'.format(class_accuracy_train))
+        tqdm.write('Loss_train: {}\tLoss_val:{}'.format(ave_loss, val_loss))
+        tqdm.write('Acc_train: {}\t\tAcc_val: {}\tAcc_test: {}'.format(train_accuracy, val_accuracy, test_accuracy))
+        tqdm.write('')
+        # tqdm.write('Acc_classifier: {}'.format(class_accuracy_train))
 
-    print('Learning is finished')
-    return loss_history, accuracy_history, val_loss_history, val_accuracy_history
+    print('Training finished')
+    return loss_history, accuracy_history, val_loss_history, val_accuracy_history, test_accuracy_history
 
 
 def calculate_accuracy(model, loader):
     model.eval()
-    correct_samples = 0
+    correct_associations = 0
+    correct_distinctions = 0
     total_samples = 0
     loss_accum = 0
     with torch.no_grad():
         for i_step, (x, y_class, y_oh) in enumerate(loader):
             #             print(y_class)
-            indexes_one = [i for i, x in enumerate(
+            test_indexes = [i for i, x in enumerate(
                 y_class) if (x == 'airplane') | (x == 'car')]
+
             y_oh = y_oh.type(torch.FloatTensor)
             y_class = list(y_class)
-            x = x.to(device)[indexes_one]
-            y = y_oh.to(device)[indexes_one][:, 2:4]
-            prediction = model(x)[:, 2:4]
-            loss_accum += loss(prediction, y)
-            _, indices_pred = torch.max(prediction, 1)
-            _, indices_true = torch.max(y, 1)
-            correct_samples += torch.sum(indices_pred == indices_true)
-            total_samples += indices_pred.shape[0]
-    accuracy = float(correct_samples)/total_samples
-    ave_loss = loss_accum/i_step
-    print(i_step)
-    return accuracy, ave_loss
+            x = x.to(device)[test_indexes]
+            y_association = y_oh.to(device)[test_indexes][:, 2:4]
+
+            y_distinction = y_oh.to(device)[test_indexes][:, :2]
+
+            prediction = model(x)
+            association = prediction[:, 2:4]
+            distinction = prediction[:, :2]
+
+            loss_accum += loss(association, y_association)
+            _, indices_association = torch.max(association, 1)
+            _, indices_distinctions = torch.max(distinction, 1)
+            _, true_associations = torch.max(y_association, 1)
+            _, true_distinctions = torch.max(y_distinction, 1)
+
+            correct_associations += torch.sum(indices_association == true_associations)
+
+            correct_distinctions += torch.sum(indices_distinctions == true_distinctions)
+            
+            total_samples += indices_association.shape[0]
+
+    accuracy_association = float(correct_associations)/total_samples
+    accuracy_distinction = float(correct_distinctions)/total_samples
+    ave_loss = loss_accum/i_step if i_step > 0 else loss_accum
+    return accuracy_association, accuracy_distinction, ave_loss
 
 
 # My model
 
-multiclass_net = models.resnet18(pretrained=False)
+multiclass_net = models.resnet50(pretrained=False)
 num_ftrs = multiclass_net.fc.in_features
 multiclass_net.fc = (nn.Linear(num_ftrs, 6))
 
 # multiclass_net.load_state_dict(torch.load('classifier.pt'))
 multiclass_net = multiclass_net.to(device)
 loss = nn.BCEWithLogitsLoss()
-optimizer = optim.Adam(multiclass_net.parameters(), lr=1e-3)  # , momentum=0.9)
+optimizer = optim.Adam(multiclass_net.parameters())#, lr=1e-3 , momentum=0.9)
 
-loss_history, accuracy_history, val_loss_history, val_accuracy_history = \
+loss_history, accuracy_history, val_loss_history, val_accuracy_history, test_accuracy_history = \
     train_multiclass_model(multiclass_net,
                            trainsetLoader,
                            testsetLoader,
@@ -318,6 +352,7 @@ plt.figure(figsize=(20, 5))
 plt.subplot(1, 2, 1)
 plt.plot(accuracy_history, label='Train')
 plt.plot(val_accuracy_history, label='Validation')
+plt.plot(test_accuracy_history, label='Test')
 plt.title('Accuracy')
 plt.legend()
 plt.subplot(1, 2, 2)
